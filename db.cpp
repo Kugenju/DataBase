@@ -3,28 +3,67 @@
 #include<iomanip>
 using namespace std;
 
+//以下定义一系列需要用到的常量或简单函数
+#define USERNAME_SIZE 32
+#define EMAIL_SIZE 256
+#define size_of_attribute(class,attribute) sizeof(((class*)0)->attribute)
+//定义一个获取类中属性偏移值的函数，主要用来辅助表中属性的定义
+const uint32_t MaxPageSize = 100; //某一表中最大存储的分页个数
+const uint32_t PageSize = 4096; //分页的最大大小
+
+//以下定义一系列枚举类型以增强代码的可读性
 enum MetaCammandResult{
+    //标识基础命令是否解析成功
     CAMMAND_PARSE_SUCCESS,
     CAMMAND_UNRECOGNIZED
 };
 
 enum CleckSQL{
+    //标识sql语句是否解析成功
     PARSE_SQL_SUCCESS,
-    UNRECOGNIZED_SQL
+    UNRECOGNIZED_SQL,
+    PARSE_SYNTAX_ERROR
 };
 
 enum StatementofSQL{
+    //标识sql语句被解析为哪一种类型
+    STATMENT_CREATE_TABLE,
     STATEMENT_INSERT,
     STATEMENT_SELECT,
     STATEMENT_DELETE,
     STATEMENT_UPDATE
 };
 
+//以下定义一系列需要用到的类
+
+class Row{
+    //定义表中元组类型
+    public:
+        uint32_t id;
+        char username[USERNAME_SIZE];
+        char email[EMAIL_SIZE];
+        int AttributeNum;
+};
 class Statement {
+    //定义SQL语句类型
     public:
         StatementofSQL type;
+        Row row_to_insert;
 };
+
+
+class table
+{
+    //定义一个表格类，用来储存创建的表格
+public:
+    void* pages[PageSize]; //存储数据的分页
+    uint32_t nrow; //指示行数
+    table();
+    ~table();
+};
+
 class DB{
+    //定义数据库类型
     public:
         void start();
         void prompt_printed();
@@ -35,13 +74,29 @@ class DB{
         bool parse_meta_command(std::string command);
 };
 
+//以下定义各个类中的成员函数
+table::table()
+{//初始化一个表
+    nrow = 0;
+    for(int i = 0;i < PageSize;i++){
+        pages[i] = NULL;
+    }
+}
+
+table::~table()
+{//表类型的析构函数
+    for(int i = 0;i < PageSize;i++){
+        free(pages[i]);
+    }
+}
+
 void DB::prompt_printed(){
     // 来打印一个提示符
     std::cout<<"database > ";
 }
 
 bool DB::parse_meta_command(std::string command){
-    // 对输入的简单命令进行解析
+    // 对输入的基础命令进行解析
     if (command[0] == '.'){
         switch (do_meta_command(command))
         {
@@ -55,7 +110,98 @@ bool DB::parse_meta_command(std::string command){
     return false;
 }
 
+MetaCammandResult DB::do_meta_command(std::string command){
+    //执行基本操作的函数
+    if (command == ".exit"){
+        //成功退出数据库
+        std::cout<<"Bye!"<<std::endl;
+        exit(EXIT_SUCCESS);
+    }
+    else{
+        return CAMMAND_UNRECOGNIZED;
+    }
+    return CAMMAND_PARSE_SUCCESS;
+}
+
+bool DB::parse_SQL_statement(std::string &input_line, Statement &statement){
+    //判断SQL语句是否解析成功的函数
+    switch(do_sql_statement(input_line,statement)){
+        case PARSE_SQL_SUCCESS:
+            return false;
+        case PARSE_SYNTAX_ERROR:
+            std::cout<<"Syntax Error"<<std::endl;
+            return true;
+        case UNRECOGNIZED_SQL:
+            std::cout<<"Unrecognized statement"<<std::endl;
+            return true;
+    }
+    return true;
+}
+
+CleckSQL DB::do_sql_statement(std::string &input_line,Statement &statement){
+    //解析SQL语句的函数
+    if(!input_line.compare(0,6,"select")){
+        statement.type = STATEMENT_SELECT;
+        return PARSE_SQL_SUCCESS;
+    }
+    else if(!input_line.compare(0,6,"insert")){
+        statement.type = STATEMENT_INSERT;
+        int received_attribute = std::sscanf(
+            input_line.c_str(),"insert %d %s %s",
+            &(statement.row_to_insert.id),
+            statement.row_to_insert.username,
+            statement.row_to_insert.email);
+        //接收要插入的元素
+        if(received_attribute < statement.row_to_insert.AttributeNum){
+            return PARSE_SYNTAX_ERROR; //插入的属性有缺失造成语法错误
+        }
+        return PARSE_SQL_SUCCESS;
+    }
+    else if(!input_line.compare(0,6,"delete")){
+        statement.type = STATEMENT_DELETE;
+        return PARSE_SQL_SUCCESS;
+    }
+    else if(!input_line.compare(0,6,"update")){
+        statement.type = STATEMENT_UPDATE;
+        return PARSE_SQL_SUCCESS;
+    }
+    else if(!input_line.compare(0,12,"create table")){
+        statement.type = STATMENT_CREATE_TABLE;
+        return PARSE_SQL_SUCCESS;
+    }
+    else
+    {
+        return UNRECOGNIZED_SQL;
+    }
+    
+}
+
+void DB::execute_sql(Statement &statement){
+    //实现各种SQL操作的总函数
+    switch (statement.type)
+    {
+    case STATEMENT_DELETE:
+        std::cout<<"Execute delete statement"<<std::endl;
+        break;
+    case STATEMENT_INSERT:
+        
+        std::cout<<"Execute insert statement"<<std::endl;
+        break;
+    case STATEMENT_UPDATE:
+        std::cout<<"Execute delete statement"<<std::endl;
+        break;
+    case STATEMENT_SELECT:
+        std::cout<<"Execute select statement"<<std::endl;
+        break;
+    case STATMENT_CREATE_TABLE:
+        std::cout<<"Execute creat table statement"<<std::endl;
+        break;
+    }
+    return;
+}
+           
 void DB::start(){
+    //对数据库操作进行运行的虚拟机
     while (true){
         prompt_printed();
         std::string input_line;
@@ -77,70 +223,13 @@ void DB::start(){
     }
 }
 
-MetaCammandResult DB::do_meta_command(std::string command){
-    if (command == ".exit"){
-        std::cout<<"Bye!"<<std::endl;
-        exit(EXIT_SUCCESS);
-    }
-    else{
-        return CAMMAND_UNRECOGNIZED;
-    }
-    return CAMMAND_PARSE_SUCCESS;
-}
-
-bool DB::parse_SQL_statement(std::string &input_line, Statement &statement){
-    if(do_sql_statement(input_line,statement) == PARSE_SQL_SUCCESS){
-        return false;
-    }   
-    else{
-        std::cout<<"Unrecognized statement"<<std::endl;
-        return true;
-    }
-}
-
-CleckSQL DB::do_sql_statement(std::string &input_line,Statement &statement){
-    if(!input_line.compare(0,6,"select")){
-        statement.type = STATEMENT_SELECT;
-        return PARSE_SQL_SUCCESS;
-    }
-    else if(!input_line.compare(0,6,"insert")){
-        statement.type = STATEMENT_INSERT;
-        return PARSE_SQL_SUCCESS;
-    }
-    else if(!input_line.compare(0,6,"delete")){
-        statement.type = STATEMENT_DELETE;
-        return PARSE_SQL_SUCCESS;
-    }
-    else if(!input_line.compare(0,6,"update")){
-        statement.type = STATEMENT_UPDATE;
-        return PARSE_SQL_SUCCESS;
-    }
-    else
-    {
-        return UNRECOGNIZED_SQL;
-    }
+//以下为需要用到的各种函数的定义
+void InsertRows(Row row, table table){
+    //用来实现Insert功能的函数
     
 }
 
-void DB::execute_sql(Statement &statement){
-    switch (statement.type)
-    {
-    case STATEMENT_DELETE:
-        std::cout<<"Execute select statement"<<std::endl;
-        break;
-    case STATEMENT_INSERT:
-        std::cout<<"Execute select statement"<<std::endl;
-        break;
-    case STATEMENT_UPDATE:
-        std::cout<<"Execute select statement"<<std::endl;
-        break;
-    case STATEMENT_SELECT:
-        std::cout<<"Execute select statement"<<std::endl;
-        break;
-    }
-    return;
-}
-           
+//以下为主函数
 int main(){
     DB database;
     database.start();

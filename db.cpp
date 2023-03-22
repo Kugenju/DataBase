@@ -1,5 +1,5 @@
 #include <iostream>
-#include <string>
+#include <string.h>
 #include<iomanip>
 using namespace std;
 
@@ -10,6 +10,7 @@ using namespace std;
 //定义一个获取类中属性偏移值的函数，主要用来辅助表中属性的定义
 const uint32_t MaxPageSize = 100; //某一表中最大存储的分页个数
 const uint32_t PageSize = 4096; //分页的最大大小
+const uint32_t TABLE_MAX_ROWNUMBLE = MaxPageSize * (PageSize/sizeof(Row));
 
 //以下定义一系列枚举类型以增强代码的可读性
 enum MetaCammandResult{
@@ -42,7 +43,7 @@ class Row{
         uint32_t id;
         char username[USERNAME_SIZE];
         char email[EMAIL_SIZE];
-        int AttributeNum;
+        int AttributeNum = 3;
 };
 class Statement {
     //定义SQL语句类型
@@ -60,6 +61,7 @@ public:
     uint32_t nrow; //指示行数
     table();
     ~table();
+    void* get_cur();
 };
 
 class DB{
@@ -67,7 +69,7 @@ class DB{
     public:
         void start();
         void prompt_printed();
-        void execute_sql(Statement &statement);
+        void execute_sql(Statement &statement,table &table);
         MetaCammandResult do_meta_command(std::string command);
         CleckSQL do_sql_statement(std::string &input_line,Statement &statement);
         bool parse_SQL_statement(std::string &input_line, Statement &statement);
@@ -87,6 +89,18 @@ table::~table()
 {//表类型的析构函数
     for(int i = 0;i < PageSize;i++){
         free(pages[i]);
+    }
+}
+
+void* table::get_cur(){
+    if(this->nrow > TABLE_MAX_ROWNUMBLE){
+        //判断表是否已满
+        std::cout<<"Error: Can't get cur, table is full"<<std::endl;
+        return NULL;
+    }
+    else{
+        //获得指向当前最后行所在分页的指针
+        return this->pages[this->nrow/(PageSize/sizeof(Row)) + 1];
     }
 }
 
@@ -176,7 +190,7 @@ CleckSQL DB::do_sql_statement(std::string &input_line,Statement &statement){
     
 }
 
-void DB::execute_sql(Statement &statement){
+void DB::execute_sql(Statement &statement,table &table){
     //实现各种SQL操作的总函数
     switch (statement.type)
     {
@@ -184,7 +198,7 @@ void DB::execute_sql(Statement &statement){
         std::cout<<"Execute delete statement"<<std::endl;
         break;
     case STATEMENT_INSERT:
-        
+        execute_select(statement,table);
         std::cout<<"Execute insert statement"<<std::endl;
         break;
     case STATEMENT_UPDATE:
@@ -201,9 +215,10 @@ void DB::execute_sql(Statement &statement){
 }
            
 void DB::start(){
-    //对数据库操作进行运行的虚拟机
+    //运行数据库程序的虚拟机
     while (true){
         prompt_printed();
+        table table;
         std::string input_line;
         std::getline(std::cin,input_line);
 
@@ -218,14 +233,32 @@ void DB::start(){
             continue;
         }
 
-        execute_sql(statement);
+        execute_sql(statement,table);
 
     }
 }
 
 //以下为需要用到的各种函数的定义
-void InsertRows(Row row, table table){
+void InsertRows(Row row, void* demition){
     //用来实现Insert功能的函数
+    memcpy((char*)demition, &(row.id),size_of_attribute(Row,id));
+    memcpy((char*)demition + size_of_attribute(Row,username),&(row.username),size_of_attribute(Row,username));
+    memcpy((char*)demition + size_of_attribute(Row,username) + size_of_attribute(Row,email),&(row.email),size_of_attribute(Row,email));
+    //按Row内数据成员偏移量为间隔插入信息，节约内存空间
+}
+
+void execute_select(Statement &statement, table &table){
+    if(table.nrow >TABLE_MAX_ROWNUMBLE){
+        std::cout<<"Error Table is full"<<std::endl;
+    }
+    else{
+        void* page = table.get_cur();
+        InsertRows(statement.row_to_insert,page);
+        std::cout<<"Execute insert successful"<<std::endl;
+    }
+}
+
+void SelectRows(Statement statement){
     
 }
 
